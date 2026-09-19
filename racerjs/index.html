@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Canyon Cruiser - Interactive Music Video</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+    }
+    canvas {
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background: #000;
+      display: block;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      z-index: 100;
+      cursor: pointer;
+    }
+    #overlay h1 {
+      font-size: 38px;
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    #overlay p {
+      font-size: 18px;
+      color: #ccc;
+    }
+    #info {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      color: #fff;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.8);
+      pointer-events: none;
+      z-index: 10;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div id="overlay">
+  <h1>Click or Press Any Key to Start</h1>
+  <p>dromos.mp3</p>
+</div>
+
+<div id="info">
+  Controls: [UP / W] Accelerate | [LEFT/RIGHT or A/D] Steer<br>
+  <span id="score-display">Tokens Collected: 0</span>
+</div>
+<canvas id="game" width="1920" height="1080"></canvas>
+
+<script>
+// =========================================================================
+// EASY TWEAK CONFIGURATION VARIABLES
+// =========================================================================
+const ROAD_WIDTH = 2500;        // Road width
+const HORIZON = 565;            // Horizon height
+const BIKE_WIDTH = 400;         // Bike sprite width (400x300)
+const BIKE_HEIGHT = 300;        // Bike sprite height (400x300)
+
+const STEER_SPEED = 0.015;      // Turning responsiveness
+const BG_PARALLAX_SPEED = 60;   // Background mountain scrolling speed
+
+// 4 Lane centers: Far Left (-0.72), Inner Left (-0.24), Inner Right (0.24), Far Right (0.72)
+const LANES = [-0.72, -0.24, 0.24, 0.72];
+const TOKEN_SIZE = 800;         // Base token render scale
+
+// =========================================================================
+// SONG LYRICS TIMING (TIMESTAMPS & DURATION FOR Lyr01.png - Lyr12.png)
+// =========================================================================
+const LYRICS_DATA = [
+{ time: 62.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 71.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 79.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 88.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 110.0, duration: 10.0, imgIndex: 2 },  // Lyr03.png
+  { time: 113.0, duration: 10.0, imgIndex: 3 },  // Lyr04.png
+  { time: 119.0, duration: 10.0, imgIndex: 4 },  // Lyr05.png
+  { time: 126.0, duration: 10.0, imgIndex: 5 },  // Lyr06.png
+  { time: 129.0, duration: 10.0, imgIndex: 6 },  // Lyr07.png
+  { time: 132.0, duration: 10.0, imgIndex: 7 },  // Lyr08.png
+  { time: 135.0, duration: 10.0, imgIndex: 8 }, // Lyr09.png
+  { time: 142.0, duration: 10.0, imgIndex: 9 },  // Lyr10.png
+  { time: 146.0, duration: 10.0, imgIndex: 10 },  // Lyr11.png
+  { time: 150.0, duration: 10.0, imgIndex: 11 },  // Lyr12.png
+  { time: 154.0, duration: 10.0, imgIndex: 12 },  // Lyr13.png
+  { time: 159.0, duration: 10.0, imgIndex: 13 },  // Lyr14.png
+  { time: 163.0, duration: 10.0, imgIndex: 14 },  // Lyr15.png
+  { time: 167.0, duration: 10.0, imgIndex: 15 },  // Lyr16.png
+  { time: 206.0, duration: 10.0, imgIndex: 16 },  // Lyr17.png
+  { time: 210.0, duration: 10.0, imgIndex: 17 },  // Lyr18.png
+  { time: 214.0, duration: 10.0, imgIndex: 18 },  // Lyr19.png
+  { time: 218.0, duration: 10.0, imgIndex: 19 },  // Lyr20.png
+  { time: 222.0, duration: 10.0, imgIndex: 20 },  // Lyr21.png
+  { time: 238.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 247.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 254.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 263.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 270.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 279.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 286.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 295.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 302.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 311.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
+  { time: 327.0, duration: 10.0, imgIndex: 1 }  // Lyr02.png
+];
+// =========================================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const CANVAS_WIDTH = 1920;
+const CANVAS_HEIGHT = 1080;
+
+// --- Audio Setup ---
+const bgm = new Audio('dromos.mp3');
+let isAudioStarted = false;
+
+// --- Sprite Asset Loading ---
+const spriteNames = {
+  ID: 'BikeID.png',
+  R2: 'BikeR2.png',
+  R1: 'BikeR1.png',
+  CE: 'BikeCE.png',
+  L1: 'BikeL1.png',
+  L2: 'BikeL2.png',
+  MOUNTAINS: 'mountains.png'
+};
+
+const bikeSprites = {};
+const lyricSprites = [];
+const tokenSprites = [];
+
+const TOTAL_LYRIC_IMAGES = 21;
+const TOTAL_TOKEN_FRAMES = 3;
+
+// Load Bike & Mountain Sprites
+for (let key in spriteNames) {
+  bikeSprites[key] = new Image();
+  bikeSprites[key].src = spriteNames[key];
+}
+
+// Preload Lyric Images (Lyr01.png to Lyr12.png)
+for (let i = 1; i <= TOTAL_LYRIC_IMAGES; i++) {
+  const numStr = String(i).padStart(2, '0');
+  const img = new Image();
+  img.src = `Lyr${numStr}.png`;
+  lyricSprites.push(img);
+}
+
+// Preload Looping Token Sprites (logotkn0.png to logotkn2.png)
+for (let i = 0; i < TOTAL_TOKEN_FRAMES; i++) {
+  const img = new Image();
+  img.src = `logotkn${i}.png`;
+  tokenSprites.push(img);
+}
+
+const brokenTokenImg = new Image();
+brokenTokenImg.src = 'logotkn3.png';
+
+// --- World Config Parameters ---
+const SEGMENT_LENGTH = 200;
+const DRAW_DISTANCE = 200; 
+const CAMERA_HEIGHT = 1000;
+const CAMERA_DEPTH = 0.8;
+
+// --- Procedural Track Generation ---
+let segments = [];
+let currentSectionType = 'STRAIGHT';
+let score = 0;
+
+function addSegment(curve) {
+  const n = segments.length;
+  segments.push({
+    index: n,
+    p1: { world: { x: 0, y: 0, z: n * SEGMENT_LENGTH }, screen: {} },
+    p2: { world: { x: 0, y: 0, z: (n + 1) * SEGMENT_LENGTH }, screen: {} },
+    curve: curve,
+    color: Math.floor(n / 3) % 2 ? { road: '#222222', grass: '#c2a47c', side: '#444444' }
+                                 : { road: '#2a2a2a', grass: '#b89a6c', side: '#3a3a3a' },
+    token: null
+  });
+}
+
+function generateNextSection() {
+  let nextType = 'STRAIGHT';
+  if (currentSectionType === 'STRAIGHT') {
+    nextType = Math.random() < 0.5 ? 'LEFT' : 'RIGHT';
+  } else {
+    nextType = 'STRAIGHT';
+  }
+
+  let sectionLength = 0;
+  let maxCurve = 0;
+
+  if (nextType === 'STRAIGHT') {
+    sectionLength = Math.floor(Math.random() * 800) + 400;
+    maxCurve = 0;
+  } else {
+    sectionLength = Math.floor(Math.random() * 60) + 60;
+    if (nextType === 'LEFT') maxCurve = -(Math.random() * 1.5 + 2.5);
+    if (nextType === 'RIGHT') maxCurve = (Math.random() * 1.5 + 2.5);
+  }
+
+  const easeLen = Math.min(30, Math.floor(sectionLength * 0.2));
+  const holdLen = sectionLength - (easeLen * 2);
+
+  for (let i = 0; i < easeLen; i++) addSegment((i / easeLen) * maxCurve);
+  for (let i = 0; i < holdLen; i++) addSegment(maxCurve);
+  for (let i = 0; i < easeLen; i++) addSegment(((easeLen - i) / easeLen) * maxCurve);
+
+  // Attach token in the middle of a random lane at the end of straight sections
+  if (nextType === 'STRAIGHT') {
+    const endIdx = segments.length - 1;
+    const randomLane = LANES[Math.floor(Math.random() * LANES.length)];
+    
+    segments[endIdx].token = {
+      laneX: randomLane,
+      collected: false
+    };
+  }
+
+  currentSectionType = nextType;
+}
+
+function initTrack() {
+  segments = [];
+  currentSectionType = 'STRAIGHT';
+  for (let i = 0; i < 800; i++) addSegment(0);
+  for (let s = 0; s < 6; s++) generateNextSection();
+}
+initTrack();
+
+// --- Game State Parameters ---
+const maxSpeed = 18000;
+const cruiseSpeed = maxSpeed / 3;
+let speed = 0;
+let playerX = 0;
+let position = 0;
+let bgParallaxX = 0;
+
+const accel = 200;
+const deceleration = 120;
+let leanValue = 0; 
+
+// Input handling
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+// Start Overlay Handler
+const overlay = document.getElementById('overlay');
+function startExperience() {
+  if (!isAudioStarted) {
+    isAudioStarted = true;
+    bgm.play().catch(e => console.log('Audio playback error:', e));
+    overlay.style.display = 'none';
+  }
+}
+overlay.addEventListener('click', startExperience);
+window.addEventListener('keydown', startExperience);
+
+// --- Math & Projection Helpers ---
+function project(p, cameraX, cameraY, cameraZ, cameraDepth, width, height, roadWidth) {
+  p.camera = {
+    x: p.world.x - cameraX,
+    y: p.world.y - cameraY,
+    z: p.world.z - cameraZ
+  };
+  p.screen.scale = cameraDepth / Math.max(1, p.camera.z);
+  p.screen.x = Math.round((width / 2) + (p.screen.scale * p.camera.x * height));
+  p.screen.y = Math.round((height / 2) - (p.screen.scale * p.camera.y * height));
+  p.screen.w = Math.round(p.screen.scale * roadWidth * height);
+}
+
+function drawPolygon(x1, y1, w1, x2, y2, w2, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x1 - w1, y1);
+  ctx.lineTo(x2 - w2, y2);
+  ctx.lineTo(x2 + w2, y2);
+  ctx.lineTo(x1 + w1, y1);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawLineStrip(x1, y1, w1, x2, y2, w2, offset, widthFactor, color) {
+  const lx1 = x1 + (w1 * offset);
+  const lx2 = x2 + (w2 * offset);
+  const lw1 = w1 * widthFactor;
+  const lw2 = w2 * widthFactor;
+  drawPolygon(lx1, y1, lw1, lx2, y2, lw2, color);
+}
+
+// --- Image Lyric Renderer ---
+function drawLyrics(currentTime, horizonY) {
+  LYRICS_DATA.forEach(line => {
+    if (currentTime >= line.time && currentTime <= line.time + line.duration) {
+      const progress = (currentTime - line.time) / line.duration;
+      const img = lyricSprites[line.imgIndex];
+
+      if (img && img.complete && img.naturalWidth > 0) {
+        const startY = horizonY - 200;
+        const endY = 110;
+        const currentY = startY - (progress * (startY - endY));
+
+        const currentScale = 0.60 + (progress * 0.40);
+
+        let alpha = 1.0;
+        if (progress < 0.20) alpha = progress / 0.20;
+        else if (progress > 0.80) alpha = (1 - progress) / 0.20;
+
+        const drawW = img.width * currentScale;
+        const drawH = img.height * currentScale;
+        const drawX = (CANVAS_WIDTH - drawW) / 2;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.drawImage(img, drawX, currentY - (drawH / 2), drawW, drawH);
+        ctx.restore();
+      }
+    }
+  });
+}
+
+// --- Canyon Horizon Background ---
+function drawCanyonBackground(horizonY) {
+  const skyGradient = ctx.createLinearGradient(0, 0, 0, horizonY);
+  skyGradient.addColorStop(0, '#1a4373');   
+  skyGradient.addColorStop(0.6, '#3a72b0'); 
+  skyGradient.addColorStop(1, '#81a8d1');   
+
+  ctx.fillStyle = skyGradient;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, horizonY);
+
+  if (bikeSprites['MOUNTAINS'] && bikeSprites['MOUNTAINS'].complete && bikeSprites['MOUNTAINS'].naturalWidth > 0) {
+    const mountainImg = bikeSprites['MOUNTAINS'];
+    const mountainWidth = 1920;
+    const mountainHeight = 300;
+    const mountainY = horizonY - mountainHeight;
+
+    let xOffset = (-bgParallaxX) % mountainWidth;
+    if (xOffset > 0) xOffset -= mountainWidth;
+
+    ctx.drawImage(mountainImg, xOffset, mountainY, mountainWidth, mountainHeight);
+    ctx.drawImage(mountainImg, xOffset + mountainWidth, mountainY, mountainWidth, mountainHeight);
+  }
+
+  if (isAudioStarted) {
+    drawLyrics(bgm.currentTime, horizonY);
+  }
+
+  ctx.fillStyle = '#c2a47c';
+  ctx.fillRect(0, horizonY, CANVAS_WIDTH, CANVAS_HEIGHT - horizonY);
+}
+// Add at top level near state variables:
+let lastPosition = 0;
+
+// Updated Collision Function
+function checkTokenCollisions() {
+  const oldSegIndex = Math.floor(lastPosition / SEGMENT_LENGTH);
+  const currentSegIndex = Math.floor(position / SEGMENT_LENGTH);
+
+  for (let i = oldSegIndex; i <= currentSegIndex; i++) {
+    const seg = segments[i];
+
+    // Check only unbroken tokens
+    if (seg && seg.token && !seg.token.isBroken) {
+      const xDistance = Math.abs(playerX - seg.token.laneX);
+
+      if (xDistance < 0.35) {
+        seg.token.isBroken = true;
+        seg.token.breakTime = performance.now(); // Record collision time
+        score += 1;
+        
+        const scoreEl = document.getElementById('score-display');
+        if (scoreEl) scoreEl.innerText = `Tokens Collected: ${score}`;
+        break; 
+      }
+    }
+  }
+
+  lastPosition = position;
+}
+
+// --- Pseudo-3D Token Renderer (Defensive Guarded Implementation) ---
+function drawTokens(baseSegmentIndex, maxDrawIndex) {
+  for (let n = maxDrawIndex - 1; n >= baseSegmentIndex; n--) {
+    const segment = segments[n];
+    if (!segment || !segment.token) continue;
+    if (segment.p1.world.z <= CAMERA_DEPTH) continue;
+
+    const p1 = segment.p1.screen;
+    if (!p1 || typeof p1.x !== 'number' || isNaN(p1.x) || p1.y <= HORIZON) continue;
+
+    const scale = p1.scale;
+    if (!scale || scale <= 0) continue;
+
+    const spriteX = p1.x + (scale * segment.token.laneX * ROAD_WIDTH * CANVAS_HEIGHT);
+    const spriteY = p1.y;
+
+    const destW = TOKEN_SIZE * scale * CANVAS_HEIGHT;
+    const destH = TOKEN_SIZE * scale * CANVAS_HEIGHT;
+
+    const drawX = spriteX - (destW / 2);
+    const drawY = spriteY - destH;
+
+    if (isNaN(drawX) || isNaN(drawY) || destW <= 0 || destH <= 0) continue;
+
+    // --- BROKEN TOKEN STATE ---
+    if (segment.token.isBroken) {
+      const elapsed = performance.now() - segment.token.breakTime;
+      const breakDuration = 500; // Display broken sprite for 500ms
+
+      if (elapsed < breakDuration) {
+        if (brokenTokenImg.complete && brokenTokenImg.naturalWidth > 0) {
+          const alpha = 1 - (elapsed / breakDuration); // Fade out over 500ms
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, alpha);
+          ctx.drawImage(brokenTokenImg, drawX, drawY, destW, destH);
+          ctx.restore();
+        }
+      }
+    } 
+    // --- NORMAL TOKEN ANIMATION LOOP ---
+    else {
+      const frameIndex = Math.floor(performance.now() / 125) % TOTAL_TOKEN_FRAMES;
+      const tokenImg = tokenSprites[frameIndex];
+
+      if (tokenImg && tokenImg.complete && tokenImg.naturalWidth > 0) {
+        ctx.drawImage(tokenImg, drawX, drawY, destW, destH);
+      }
+    }
+  }
+}
+
+// --- Main Game Loop ---
+let lastTime = performance.now();
+
+function update(dt) {
+  if (!isAudioStarted) return;
+
+  const currentTime = bgm.currentTime;
+
+// Lock controls and movement during the intro (0 to 10 seconds)
+if (currentTime < 10) {
+    speed = 0;
+    leanValue = 0;
+    return;
+  }
+  // Song Intro Idle check (allows player movement override if accelerating)
+  const isAccelerating = keys['ArrowUp'] || keys['w'] || keys['W'];
+  const isSteeringLeft = keys['ArrowLeft'] || keys['a'] || keys['A'];
+  const isSteeringRight = keys['ArrowRight'] || keys['d'] || keys['D'];
+
+  if (currentTime < 10 && !isAccelerating) {
+    speed = 0;
+    return;
+  }
+
+  if (isAccelerating) {
+    speed = Math.min(speed + accel, maxSpeed);
+  } else {
+    if (speed < cruiseSpeed) {
+      speed = Math.min(speed + accel * 1.5, cruiseSpeed);
+    } else {
+      speed = Math.max(speed - deceleration, cruiseSpeed);
+    }
+  }
+
+  if (speed > 0) {
+    const steerRate = STEER_SPEED * (speed / maxSpeed);
+
+    if (isSteeringLeft) playerX -= steerRate;
+    if (isSteeringRight) playerX += steerRate;
+
+    const playerSegmentIndex = Math.floor(position / SEGMENT_LENGTH);
+    const currentSegment = segments[playerSegmentIndex];
+    if (currentSegment && currentSegment.curve !== 0) {
+      const centrifugalForce = currentSegment.curve * 0.012 * (speed / maxSpeed);
+      playerX -= centrifugalForce;
+      
+      bgParallaxX += currentSegment.curve * (speed / maxSpeed) * BG_PARALLAX_SPEED * dt;
+    }
+  }
+
+  // Steering Lean & Center Recovery
+  if (isSteeringLeft) {
+    leanValue = Math.min(2, leanValue + dt * 14);
+  } else if (isSteeringRight) {
+    leanValue = Math.max(-2, leanValue - dt * 14);
+  } else {
+    if (leanValue > 0) leanValue = Math.max(0, leanValue - dt * 16);
+    if (leanValue < 0) leanValue = Math.min(0, leanValue + dt * 16);
+  }
+
+  playerX = Math.max(-1.8, Math.min(1.8, playerX));
+
+  position += speed * dt;
+
+  checkTokenCollisions();
+
+  const playerSegmentIndex = Math.floor(position / SEGMENT_LENGTH);
+  while (segments.length - playerSegmentIndex < DRAW_DISTANCE + 200) {
+    generateNextSection();
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  drawCanyonBackground(HORIZON);
+
+  const baseSegmentIndex = Math.floor(position / SEGMENT_LENGTH);
+  const maxDrawIndex = baseSegmentIndex + DRAW_DISTANCE;
+
+  let dx = 0;
+  let x = 0;
+  for (let n = baseSegmentIndex; n < maxDrawIndex; n++) {
+    const segment = segments[n];
+    if (!segment) continue;
+
+    segment.p1.world.x = x;
+    segment.p1.world.z = (n * SEGMENT_LENGTH) - position;
+    segment.p2.world.x = x + dx;
+    segment.p2.world.z = ((n + 1) * SEGMENT_LENGTH) - position;
+
+    dx += segment.curve;
+    x += dx;
+
+    project(segment.p1, playerX * ROAD_WIDTH, CAMERA_HEIGHT, 0, CAMERA_DEPTH, CANVAS_WIDTH, CANVAS_HEIGHT, ROAD_WIDTH);
+    project(segment.p2, playerX * ROAD_WIDTH, CAMERA_HEIGHT, 0, CAMERA_DEPTH, CANVAS_WIDTH, CANVAS_HEIGHT, ROAD_WIDTH);
+  }
+
+  // Draw Road Segments
+  for (let n = maxDrawIndex - 1; n >= baseSegmentIndex; n--) {
+    const segment = segments[n];
+    if (!segment || segment.p1.world.z <= CAMERA_DEPTH) continue;
+
+    const p1 = segment.p1.screen;
+    const p2 = segment.p2.screen;
+
+    if (!p1 || !p2 || p1.y <= HORIZON) continue;
+
+    const renderP2Y = Math.max(HORIZON, p2.y);
+
+    if (p1.y <= renderP2Y) continue;
+    if (p1.w < 1 && p2.w < 1) continue;
+
+    drawPolygon(p1.x, p1.y, p1.w * 1.05, p2.x, renderP2Y, p2.w * 1.05, segment.color.side);
+    drawPolygon(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, segment.color.road);
+
+    drawLineStrip(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, -0.96, 0.015, '#ffffff');
+    drawLineStrip(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, 0.96, 0.015, '#ffffff');
+    drawLineStrip(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, -0.015, 0.008, '#f1c40f');
+    drawLineStrip(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, 0.015, 0.008, '#f1c40f');
+
+    if (segment.index % 6 < 3) {
+      drawLineStrip(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, -0.48, 0.012, '#ffffff');
+      drawLineStrip(p1.x, p1.y, p1.w, p2.x, renderP2Y, p2.w, 0.48, 0.012, '#ffffff');
+    }
+  }
+
+  // Draw Band Logo Tokens safely
+  drawTokens(baseSegmentIndex, maxDrawIndex);
+
+  // Draw Biker Sprite (400x300)
+  let activeSprite;
+  if (bgm.currentTime < 10) {
+    activeSprite = bikeSprites['ID'];
+  } else {
+    let spriteKey = 'CE';
+    const roundedLean = Math.round(leanValue);
+
+    if (roundedLean <= -2) spriteKey = 'R2';
+    else if (roundedLean === -1) spriteKey = 'R1';
+    else if (roundedLean === 0) spriteKey = 'CE';
+    else if (roundedLean === 1) spriteKey = 'L1';
+    else if (roundedLean >= 2) spriteKey = 'L2';
+
+    activeSprite = bikeSprites[spriteKey];
+  }
+
+  if (activeSprite && activeSprite.complete && activeSprite.naturalWidth > 0) {
+    const renderX = Math.round((CANVAS_WIDTH / 2) - (BIKE_WIDTH / 2));
+    const renderY = Math.round(CANVAS_HEIGHT - BIKE_HEIGHT - 30);
+    ctx.drawImage(activeSprite, renderX, renderY, BIKE_WIDTH, BIKE_HEIGHT);
+  }
+}
+
+// Exception-safe Animation Loop
+function loop(now) {
+  const dt = Math.min(0.1, (now - lastTime) / 1000);
+  lastTime = now;
+
+  try {
+    update(dt);
+    render();
+  } catch (err) {
+    console.warn("Game loop tick error recovered:", err);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
