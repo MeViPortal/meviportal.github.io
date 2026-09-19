@@ -95,7 +95,7 @@ const TOKEN_SIZE = 800;         // Base token render scale
 // SONG LYRICS TIMING (TIMESTAMPS & DURATION FOR Lyr01.png - Lyr12.png)
 // =========================================================================
 const LYRICS_DATA = [
-{ time: 62.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
+  { time: 62.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
   { time: 71.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
   { time: 79.0, duration: 10.0, imgIndex: 0 },  // Lyr01.png
   { time: 88.0, duration: 10.0, imgIndex: 1 },  // Lyr02.png
@@ -181,8 +181,15 @@ for (let i = 0; i < TOTAL_TOKEN_FRAMES; i++) {
   tokenSprites.push(img);
 }
 
+// Preload Broken Token Sprite
 const brokenTokenImg = new Image();
 brokenTokenImg.src = 'logotkn3.png';
+
+// --- Offscreen Canvas for Bike White Flash Effect ---
+const tintCanvas = document.createElement('canvas');
+tintCanvas.width = BIKE_WIDTH;
+tintCanvas.height = BIKE_HEIGHT;
+const tintCtx = tintCanvas.getContext('2d');
 
 // --- World Config Parameters ---
 const SEGMENT_LENGTH = 200;
@@ -220,7 +227,7 @@ function generateNextSection() {
   let maxCurve = 0;
 
   if (nextType === 'STRAIGHT') {
-    sectionLength = Math.floor(Math.random() * 800) + 400;
+    sectionLength = Math.floor(Math.random() * 700) + 400;
     maxCurve = 0;
   } else {
     sectionLength = Math.floor(Math.random() * 60) + 60;
@@ -242,7 +249,8 @@ function generateNextSection() {
     
     segments[endIdx].token = {
       laneX: randomLane,
-      collected: false
+      isBroken: false,
+      breakTime: 0
     };
   }
 
@@ -263,7 +271,9 @@ const cruiseSpeed = maxSpeed / 3;
 let speed = 0;
 let playerX = 0;
 let position = 0;
+let lastPosition = 0;
 let bgParallaxX = 0;
+let bikeHitTime = 0; // Timestamp of token collision for white flash
 
 const accel = 200;
 const deceleration = 120;
@@ -379,10 +389,8 @@ function drawCanyonBackground(horizonY) {
   ctx.fillStyle = '#c2a47c';
   ctx.fillRect(0, horizonY, CANVAS_WIDTH, CANVAS_HEIGHT - horizonY);
 }
-// Add at top level near state variables:
-let lastPosition = 0;
 
-// Updated Collision Function
+// --- Multi-Segment Tunneling-Safe Collision Detection ---
 function checkTokenCollisions() {
   const oldSegIndex = Math.floor(lastPosition / SEGMENT_LENGTH);
   const currentSegIndex = Math.floor(position / SEGMENT_LENGTH);
@@ -390,18 +398,20 @@ function checkTokenCollisions() {
   for (let i = oldSegIndex; i <= currentSegIndex; i++) {
     const seg = segments[i];
 
-    // Check only unbroken tokens
     if (seg && seg.token && !seg.token.isBroken) {
       const xDistance = Math.abs(playerX - seg.token.laneX);
 
-      if (xDistance < 0.35) {
+      // 0.35 threshold matches TOKEN_SIZE = 800
+      if (xDistance < 0.15) {
         seg.token.isBroken = true;
-        seg.token.breakTime = performance.now(); // Record collision time
-        score += 1;
+        seg.token.breakTime = performance.now();
         
+        bikeHitTime = performance.now(); // Trigger 2-second bike white flash
+
+        score += 1;
         const scoreEl = document.getElementById('score-display');
         if (scoreEl) scoreEl.innerText = `Tokens Collected: ${score}`;
-        break; 
+        break;
       }
     }
   }
@@ -409,7 +419,7 @@ function checkTokenCollisions() {
   lastPosition = position;
 }
 
-// --- Pseudo-3D Token Renderer (Defensive Guarded Implementation) ---
+// --- Pseudo-3D Token Renderer ---
 function drawTokens(baseSegmentIndex, maxDrawIndex) {
   for (let n = maxDrawIndex - 1; n >= baseSegmentIndex; n--) {
     const segment = segments[n];
@@ -433,14 +443,14 @@ function drawTokens(baseSegmentIndex, maxDrawIndex) {
 
     if (isNaN(drawX) || isNaN(drawY) || destW <= 0 || destH <= 0) continue;
 
-    // --- BROKEN TOKEN STATE ---
+    // Render Broken Token (logotkn3.png) with 500ms fade
     if (segment.token.isBroken) {
       const elapsed = performance.now() - segment.token.breakTime;
-      const breakDuration = 500; // Display broken sprite for 500ms
+      const breakDuration = 500;
 
       if (elapsed < breakDuration) {
         if (brokenTokenImg.complete && brokenTokenImg.naturalWidth > 0) {
-          const alpha = 1 - (elapsed / breakDuration); // Fade out over 500ms
+          const alpha = 1 - (elapsed / breakDuration);
           ctx.save();
           ctx.globalAlpha = Math.max(0, alpha);
           ctx.drawImage(brokenTokenImg, drawX, drawY, destW, destH);
@@ -448,7 +458,7 @@ function drawTokens(baseSegmentIndex, maxDrawIndex) {
         }
       }
     } 
-    // --- NORMAL TOKEN ANIMATION LOOP ---
+    // Render Normal Animated Token (logotkn0.png - logotkn2.png)
     else {
       const frameIndex = Math.floor(performance.now() / 125) % TOTAL_TOKEN_FRAMES;
       const tokenImg = tokenSprites[frameIndex];
@@ -460,6 +470,24 @@ function drawTokens(baseSegmentIndex, maxDrawIndex) {
   }
 }
 
+// --- White Flash Tint Helper for Bike Collision ---
+function drawWhiteFlash(img, x, y, width, height, alpha) {
+  if (!img || !img.complete || img.naturalWidth === 0) return;
+
+  tintCtx.clearRect(0, 0, width, height);
+  tintCtx.drawImage(img, 0, 0, width, height);
+
+  tintCtx.globalCompositeOperation = 'source-atop';
+  tintCtx.fillStyle = '#ffffff';
+  tintCtx.fillRect(0, 0, width, height);
+  tintCtx.globalCompositeOperation = 'source-over';
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.drawImage(tintCanvas, x, y, width, height);
+  ctx.restore();
+}
+
 // --- Main Game Loop ---
 let lastTime = performance.now();
 
@@ -468,21 +496,16 @@ function update(dt) {
 
   const currentTime = bgm.currentTime;
 
-// Lock controls and movement during the intro (0 to 10 seconds)
-if (currentTime < 10) {
+  // Strict Intro Lock: Bike remains completely still during song intro (0 to 10 seconds)
+  if (currentTime < 10) {
     speed = 0;
     leanValue = 0;
     return;
   }
-  // Song Intro Idle check (allows player movement override if accelerating)
+
   const isAccelerating = keys['ArrowUp'] || keys['w'] || keys['W'];
   const isSteeringLeft = keys['ArrowLeft'] || keys['a'] || keys['A'];
   const isSteeringRight = keys['ArrowRight'] || keys['d'] || keys['D'];
-
-  if (currentTime < 10 && !isAccelerating) {
-    speed = 0;
-    return;
-  }
 
   if (isAccelerating) {
     speed = Math.min(speed + accel, maxSpeed);
@@ -587,7 +610,7 @@ function render() {
     }
   }
 
-  // Draw Band Logo Tokens safely
+  // Draw Tokens safely
   drawTokens(baseSegmentIndex, maxDrawIndex);
 
   // Draw Biker Sprite (400x300)
@@ -610,7 +633,18 @@ function render() {
   if (activeSprite && activeSprite.complete && activeSprite.naturalWidth > 0) {
     const renderX = Math.round((CANVAS_WIDTH / 2) - (BIKE_WIDTH / 2));
     const renderY = Math.round(CANVAS_HEIGHT - BIKE_HEIGHT - 30);
+
+    // 1. Draw base bike sprite
     ctx.drawImage(activeSprite, renderX, renderY, BIKE_WIDTH, BIKE_HEIGHT);
+
+    // 2. Overlay 2-second white flash on collision
+    const hitElapsed = performance.now() - bikeHitTime;
+    const flashDuration = 500;
+
+    if (hitElapsed < flashDuration) {
+      const flashAlpha = 1 - (hitElapsed / flashDuration);
+      drawWhiteFlash(activeSprite, renderX, renderY, BIKE_WIDTH, BIKE_HEIGHT, flashAlpha);
+    }
   }
 }
 
