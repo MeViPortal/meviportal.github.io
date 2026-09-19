@@ -402,7 +402,7 @@ function checkTokenCollisions() {
       const xDistance = Math.abs(playerX - seg.token.laneX);
 
       // 0.35 threshold matches TOKEN_SIZE = 800
-      if (xDistance < 0.15) {
+      if (xDistance < 0.20) {
         seg.token.isBroken = true;
         seg.token.breakTime = performance.now();
         
