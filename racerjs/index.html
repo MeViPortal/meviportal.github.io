@@ -29,50 +29,72 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.75);
+      background: rgba(0, 0, 0, 0.85);
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       color: #fff;
       z-index: 100;
-      cursor: pointer;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
     }
-    #overlay h1 {
-      font-size: 38px;
-      margin-bottom: 10px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
+    #start-logo {
+      max-width: 600px;
+      width: 90%;
+      height: auto;
+      margin-bottom: 20px;
     }
-    #overlay p {
+    #instructions {
+      font-family: monospace;
       font-size: 18px;
       color: #ccc;
-    }
-    #info {
-      position: absolute;
-      top: 15px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 16px;
-      color: #fff;
+      line-height: 1.6;
+      margin-bottom: 30px;
       text-shadow: 1px 1px 4px rgba(0,0,0,0.8);
-      pointer-events: none;
-      z-index: 10;
-      text-align: center;
+    }
+    #instructions p {
+      margin: 6px 0;
+    }
+    #start-btn {
+      background: #121214;
+      border: 3px solid #00e5ff;
+      border-radius: 12px;
+      color: #00e5ff;
+      font-family: monospace;
+      font-size: 26px;
+      font-weight: bold;
+      padding: 18px 70px;
+      cursor: pointer;
+      box-shadow: 0 0 15px #00e5ff;
+      transition: all 0.2s ease;
+    }
+    #start-btn:hover {
+      background: #00e5ff;
+      color: #121214;
+      box-shadow: 0 0 25px #00e5ff;
+    }
+    /* Text UI Hidden */
+    #info {
+      display: none;
     }
   </style>
 </head>
 <body>
 
 <div id="overlay">
-  <h1>Click or Press Any Key to Start</h1>
-  <p>dromos.mp3</p>
+  <img src="logosong.png" id="start-logo" alt="Logo & Song Info">
+  <div id="instructions">
+    <p>ΟΔΗΓΙΕΣ: [ΠΑΝΩ ή W] ΓΚΑΖΙ | [ΑΡΙΣΤΕΡΑ/ΔΕΞΙΑ ή A/D] ΤΙΜΟΝΙ</p>
+  </div>
+  <button id="start-btn" onclick="startExperience()">ΕΝΑΡΞΗ</button>
 </div>
 
 <div id="info">
-  Controls: [UP / W] Accelerate | [LEFT/RIGHT or A/D] Steer<br>
   <span id="score-display">Tokens: 0 | Max Speed: 17000 | Odometer: 0 m</span>
 </div>
+
 <canvas id="game" width="1920" height="1080"></canvas>
 
 <script>
@@ -85,15 +107,19 @@ const CANVAS_HEIGHT = 1080;
 
 // Outro timing constants (in seconds)
 const OUTRO_TIME = 370;    // 6m 10s
-const SONG_END_TIME = 404; // 6m 44s
+const SONG_END_TIME = 371; // 6m 11s
 
 let isOutro = false;
 let isGameOver = false;
 
 // Restart button dimensions on 1920x1080 canvas
-const restartBtn = { x: 810, y: 500, w: 300, h: 80 };
+const restartBtn = { x: 810, y: 640, w: 300, h: 80 };
 
-// Click Listener for Restart Button
+// Preload Main Song Logo Sprite
+const logoSongImg = new Image();
+logoSongImg.src = 'logosong.png';
+
+// Click Listener for End Game Restart Button
 canvas.addEventListener('click', (e) => {
   if (!isGameOver) return;
 
@@ -115,7 +141,7 @@ canvas.addEventListener('click', (e) => {
 });
 
 // =========================================================================
-// EASY TWEAK CONFIGURATION VARIABLES
+// CONFIGURATION VARIABLES
 // =========================================================================
 const ROAD_WIDTH = 2500;        // Road width
 const HORIZON = 565;            // Horizon height
@@ -222,14 +248,12 @@ function draw7SegmentDigit(x, y, w, h, digitChar, activeColor, inactiveColor, th
   });
 }
 
-// --- Token Multiplier Window (X: 40, Y: 830, W: 224, H: 65) ---
+// --- Token Multiplier Window ---
 function drawTokenMultiplier(x, y, tokenCount) {
   const totalW = 224;
   const totalH = 65;
 
   ctx.save();
-
-  // 1. Outer Metallic Casing
   ctx.fillStyle = '#121214';
   ctx.strokeStyle = '#44444c';
   ctx.lineWidth = 3;
@@ -242,14 +266,12 @@ function drawTokenMultiplier(x, y, tokenCount) {
   ctx.fill();
   ctx.stroke();
 
-  // 2. Top Header Label ('TOKENS COLLECTED')
   ctx.fillStyle = '#8a8a93';
   ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.fillText('TOKENS COLLECTED', x + totalW / 2, y + 14);
 
-  // 3. Inner LCD Screen
   const pad = 6;
   const screenX = x + pad;
   const screenY = y + 18;
@@ -262,7 +284,6 @@ function drawTokenMultiplier(x, y, tokenCount) {
   ctx.fillRect(screenX, screenY, screenW, screenH);
   ctx.strokeRect(screenX, screenY, screenW, screenH);
 
-  // 4. Token Logo Icon
   const logoSize = 30;
   const logoX = screenX + 10;
   const logoY = screenY + (screenH - logoSize) / 2;
@@ -276,7 +297,6 @@ function drawTokenMultiplier(x, y, tokenCount) {
     ctx.fill();
   }
 
-  // 5. Multiplied Points Value
   const points = tokenCount * 1;
   const textValue = `x ${points}`;
 
@@ -291,7 +311,7 @@ function drawTokenMultiplier(x, y, tokenCount) {
   ctx.restore();
 }
 
-// --- Digital Speedometer (Procedural 7-Segment LCD Display) ---
+// --- Digital Speedometer ---
 function drawDigitalSpeedometer(x, y, speedValue) {
   const speedKmh = Math.max(0, speedValue / 100).toFixed(1);
   
@@ -303,8 +323,6 @@ function drawDigitalSpeedometer(x, y, speedValue) {
   const totalH = 65;
 
   ctx.save();
-
-  // 1. Outer Casing
   ctx.fillStyle = '#121214';
   ctx.strokeStyle = '#44444c';
   ctx.lineWidth = 3;
@@ -317,7 +335,6 @@ function drawDigitalSpeedometer(x, y, speedValue) {
   ctx.fill();
   ctx.stroke();
 
-  // 2. Inner Screen
   const pad = 6;
   const screenX = x + pad;
   const screenY = y + pad;
@@ -330,7 +347,6 @@ function drawDigitalSpeedometer(x, y, speedValue) {
   ctx.fillRect(screenX, screenY, screenW, screenH);
   ctx.strokeRect(screenX, screenY, screenW, screenH);
 
-  // 3. Render 7-Segment Digits
   const digitW = 18;
   const digitH = 32;
   const lineThickness = 4;
@@ -351,7 +367,6 @@ function drawDigitalSpeedometer(x, y, speedValue) {
     currentX += digitW + digitGap;
   }
 
-  // Decimal Point Dot
   const dotX = currentX - 3;
   const dotY = startY + digitH - lineThickness;
   const dotSize = lineThickness + 1;
@@ -367,7 +382,6 @@ function drawDigitalSpeedometer(x, y, speedValue) {
 
   ctx.shadowBlur = 0;
 
-  // 4. KM/H Label
   ctx.font = 'bold 13px monospace';
   ctx.fillStyle = '#8a8a93';
   ctx.textAlign = 'right';
@@ -377,7 +391,7 @@ function drawDigitalSpeedometer(x, y, speedValue) {
   ctx.restore();
 }
 
-// --- Procedural Analog Mechanical Odometer ---
+// --- Procedural Analog Odometer ---
 function drawAnalogOdometer(x, y, distanceVal) {
   const meters = Math.floor(Math.max(0, distanceVal / 360));
   const numDigits = 6;
@@ -388,8 +402,6 @@ function drawAnalogOdometer(x, y, distanceVal) {
   const totalH = digitHeight + padding * 2 + 12;
 
   ctx.save();
-
-  // 1. Outer Casing
   ctx.fillStyle = '#121214';
   ctx.strokeStyle = '#44444c';
   ctx.lineWidth = 3;
@@ -406,14 +418,12 @@ function drawAnalogOdometer(x, y, distanceVal) {
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 2, y + 2, totalW - 4, totalH - 4);
 
-  // Bottom Label
   ctx.fillStyle = '#8a8a93';
   ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.fillText('ODOMETER', x + totalW / 2, y + totalH - 6);
 
-  // 2. Drum Windows
   const windowX = x + padding;
   const windowY = y + padding;
   const windowH = digitHeight;
@@ -480,9 +490,13 @@ const lyricSprites = [];
 const tokenSprites = [];
 const cactusSprites = [];
 
+const billboardRSprites = [];
+const billboardLSprites = [];
+
 const TOTAL_LYRIC_IMAGES = 21;
 const TOTAL_TOKEN_FRAMES = 3;
 const TOTAL_CACTI_TYPES = 5;
+const TOTAL_BILLBOARDS = 6;
 
 for (let key in spriteNames) {
   bikeSprites[key] = new Image();
@@ -506,6 +520,16 @@ for (let i = 0; i < TOTAL_CACTI_TYPES; i++) {
   const img = new Image();
   img.src = `cacti${i}.png`;
   cactusSprites.push(img);
+}
+
+for (let i = 0; i < TOTAL_BILLBOARDS; i++) {
+  const imgR = new Image();
+  imgR.src = `billboardR${i}.png`;
+  billboardRSprites.push(imgR);
+
+  const imgL = new Image();
+  imgL.src = (i === 5) ? 'billboardLL5.png' : `billboardL${i}.png`;
+  billboardLSprites.push(imgL);
 }
 
 const brokenTokenImg = new Image();
@@ -561,6 +585,24 @@ function spawnCactiForRange(startIdx, endIdx) {
   }
 }
 
+function spawnBillboardsForRange(startIdx, endIdx) {
+  const spacing = 140;
+  for (let i = startIdx + 20; i < endIdx - 20; i += spacing + Math.floor(Math.random() * 30)) {
+    if (segments[i] && segments[i].curve === 0) {
+      const isRight = Math.random() < 0.5;
+      const offset = isRight ? 3.5 : -3.5;
+      const spriteList = isRight ? billboardRSprites : billboardLSprites;
+      const randomBillboard = spriteList[Math.floor(Math.random() * spriteList.length)];
+
+      segments[i].sprites.push({
+        img: randomBillboard,
+        offset: offset,
+        baseScale: 2200
+      });
+    }
+  }
+}
+
 function generateNextSection() {
   let nextType = 'STRAIGHT';
   if (currentSectionType === 'STRAIGHT') {
@@ -595,6 +637,8 @@ function generateNextSection() {
   spawnCactiForRange(startIdx, endIdx);
 
   if (nextType === 'STRAIGHT') {
+    spawnBillboardsForRange(startIdx, endIdx);
+
     const tokenIdx = endIdx - 1;
     const randomLane = LANES[Math.floor(Math.random() * LANES.length)];
     
@@ -611,8 +655,12 @@ function generateNextSection() {
 function initTrack() {
   segments = [];
   currentSectionType = 'STRAIGHT';
+
   for (let i = 0; i < 800; i++) addSegment(0);
+
   spawnCactiForRange(30, 800);
+  spawnBillboardsForRange(30, 800);
+
   for (let s = 0; s < 6; s++) generateNextSection();
 }
 
@@ -650,8 +698,6 @@ function startExperience() {
     overlay.style.display = 'none';
   }
 }
-overlay.addEventListener('click', startExperience);
-window.addEventListener('keydown', startExperience);
 
 // Projection Helpers
 function project(p, cameraX, cameraY, cameraZ, cameraDepth, width, height, roadWidth) {
@@ -881,16 +927,25 @@ function drawWhiteFlash(img, x, y, width, height, alpha) {
 function drawRestartPrompt() {
   ctx.save();
 
-  // "TRACK COMPLETE" Title
-  ctx.font = 'bold 42px monospace';
+  // Draw Band & Song Logo (600x400)
+  if (logoSongImg.complete && logoSongImg.naturalWidth > 0) {
+    const logoW = 600;
+    const logoH = 400;
+    const logoX = (CANVAS_WIDTH - logoW) / 2;
+    const logoY = 120;
+    ctx.drawImage(logoSongImg, logoX, logoY, logoW, logoH);
+  }
+
+  // Track Complete Heading
+  ctx.font = 'bold 36px monospace';
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.shadowColor = '#00e5ff';
   ctx.shadowBlur = 12;
-  ctx.fillText('TRACK COMPLETE', CANVAS_WIDTH / 2, 420);
+  ctx.fillText('ΤΕΡΜΑΤΙΣΜΟΣ', CANVAS_WIDTH / 2, 575);
 
-  // Button Box
+  // START Button Outer Box
   ctx.fillStyle = '#121214';
   ctx.strokeStyle = '#00e5ff';
   ctx.lineWidth = 3;
@@ -906,13 +961,13 @@ function drawRestartPrompt() {
   ctx.fill();
   ctx.stroke();
 
-  // Button Text
-  ctx.font = 'bold 26px monospace';
+  // START Button Text
+  ctx.font = 'bold 28px monospace';
   ctx.fillStyle = '#00e5ff';
   ctx.shadowBlur = 0;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('START OVER', CANVAS_WIDTH / 2, restartBtn.y + restartBtn.h / 2);
+  ctx.fillText('ΕΝΑΡΞΗ', CANVAS_WIDTH / 2, restartBtn.y + restartBtn.h / 2);
 
   ctx.restore();
 }
@@ -932,9 +987,6 @@ function restartGame() {
   isOutro = false;
   isGameOver = false;
 
-  const infoEl = document.getElementById('info');
-  if (infoEl) infoEl.style.display = 'block';
-
   initTrack();
   updateHUD();
 
@@ -950,24 +1002,18 @@ function update(dt) {
 
   const currentTime = bgm.currentTime;
 
-  // 1. Check Outro Timing (6m 10s = 370s)
   if (currentTime >= OUTRO_TIME) {
     isOutro = true;
-    const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.style.display = 'none';
   }
 
-  // 2. Check Game Over Timing (6m 44s = 404s)
   if (currentTime >= SONG_END_TIME) {
     isGameOver = true;
   }
 
-  // Freeze game progression if in outro or game over
   if (isOutro) {
     return;
   }
 
-  // Intro Lock (0 to 10 seconds)
   if (currentTime < 10) {
     speed = 0;
     leanValue = 0;
@@ -1082,7 +1128,7 @@ function render() {
     }
   }
 
-  // Draw Roadside Objects & Tokens
+  // Draw Roadside Objects & Billboards
   drawSideObjects(baseSegmentIndex, maxDrawIndex);
   drawTokens(baseSegmentIndex, maxDrawIndex);
 
@@ -1126,17 +1172,12 @@ function render() {
     ctx.restore();
   }
 
-  // Bottom-Left Dashboard Display (drawn AFTER overlay to remain bright)
-  // 1. Tokens Multiplier
+  // Dashboard Display
   drawTokenMultiplier(40, 830, score);
-
-  // 2. Speedometer (Shows active speed during race, maxSpeed during outro)
   drawDigitalSpeedometer(40, 905, isOutro ? maxSpeed : speed);
-
-  // 3. Odometer
   drawAnalogOdometer(40, 980, totalDistance);
 
-  // Game Over Restart Prompt
+  // Game Over Screen Prompt
   if (isGameOver) {
     drawRestartPrompt();
   }
