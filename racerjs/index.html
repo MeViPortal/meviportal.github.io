@@ -71,7 +71,7 @@
 
 <div id="info">
   Controls: [UP / W] Accelerate | [LEFT/RIGHT or A/D] Steer<br>
-  <span id="score-display">Tokens Collected: 0</span>
+  <span id="score-display">Tokens: 0 | Max Speed: 15000 | Odometer: 0 m</span>
 </div>
 <canvas id="game" width="1920" height="1080"></canvas>
 
@@ -156,9 +156,11 @@ const spriteNames = {
 const bikeSprites = {};
 const lyricSprites = [];
 const tokenSprites = [];
+const cactusSprites = [];
 
 const TOTAL_LYRIC_IMAGES = 21;
 const TOTAL_TOKEN_FRAMES = 3;
+const TOTAL_CACTI_TYPES = 5;
 
 // Load Bike & Mountain Sprites
 for (let key in spriteNames) {
@@ -179,6 +181,13 @@ for (let i = 0; i < TOTAL_TOKEN_FRAMES; i++) {
   const img = new Image();
   img.src = `logotkn${i}.png`;
   tokenSprites.push(img);
+}
+
+// Preload Cacti Sprites (cacti0.png to cacti4.png)
+for (let i = 0; i < TOTAL_CACTI_TYPES; i++) {
+  const img = new Image();
+  img.src = `cacti${i}.png`;
+  cactusSprites.push(img);
 }
 
 // Preload Broken Token Sprite
@@ -211,8 +220,29 @@ function addSegment(curve) {
     curve: curve,
     color: Math.floor(n / 3) % 2 ? { road: '#222222', grass: '#c2a47c', side: '#444444' }
                                  : { road: '#2a2a2a', grass: '#b89a6c', side: '#3a3a3a' },
-    token: null
+    token: null,
+    sprites: [] // Holds roadside elements (cacti, billboards, etc.)
   });
+}
+
+// --- Helper to spawn cacti along a range of segments ---
+function spawnCactiForRange(startIdx, endIdx) {
+  for (let i = startIdx; i < endIdx; i++) {
+    if (Math.random() < 0.05) { // 5% spawn chance per segment (reduced from 10%)
+      const side = Math.random() < 0.5 ? -1.0 : 1.0;
+      
+      // Increased from 1.6 to 2.8 to push them further off-road
+      const offset = (side * 2.8) + (Math.random() * 1.0 - 0.5); 
+      const randomCactus = cactusSprites[Math.floor(Math.random() * cactusSprites.length)];
+
+      segments[i].sprites.push({
+        img: randomCactus,
+        offset: offset,
+        // Increased base scale from 700 to 1200 for larger appearance
+        baseScale: 1200 * (0.8 + Math.random() * 0.4)
+      });
+    }
+  }
 }
 
 function generateNextSection() {
@@ -235,6 +265,8 @@ function generateNextSection() {
     if (nextType === 'RIGHT') maxCurve = (Math.random() * 1.5 + 2.5);
   }
 
+  const startIdx = segments.length;
+
   const easeLen = Math.min(30, Math.floor(sectionLength * 0.2));
   const holdLen = sectionLength - (easeLen * 2);
 
@@ -242,12 +274,17 @@ function generateNextSection() {
   for (let i = 0; i < holdLen; i++) addSegment(maxCurve);
   for (let i = 0; i < easeLen; i++) addSegment(((easeLen - i) / easeLen) * maxCurve);
 
+  const endIdx = segments.length;
+
+  // Spawn cacti on newly generated section
+  spawnCactiForRange(startIdx, endIdx);
+
   // Attach token in the middle of a random lane at the end of straight sections
   if (nextType === 'STRAIGHT') {
-    const endIdx = segments.length - 1;
+    const tokenIdx = endIdx - 1;
     const randomLane = LANES[Math.floor(Math.random() * LANES.length)];
     
-    segments[endIdx].token = {
+    segments[tokenIdx].token = {
       laneX: randomLane,
       isBroken: false,
       breakTime: 0
@@ -260,20 +297,32 @@ function generateNextSection() {
 function initTrack() {
   segments = [];
   currentSectionType = 'STRAIGHT';
+  
+  // Build initial straight track
   for (let i = 0; i < 800; i++) addSegment(0);
+  
+  // Spawn cacti on the starting straight (starting from segment 30 so player start line is clear)
+  spawnCactiForRange(30, 800);
+
+  // Generate subsequent sections
   for (let s = 0; s < 6; s++) generateNextSection();
 }
+
 initTrack();
 
 // --- Game State Parameters ---
-const maxSpeed = 18000;
-const cruiseSpeed = maxSpeed / 3;
+const BASE_MAX_SPEED = 15000;
+const SPEED_BOOST_PER_TOKEN = 250;
+let maxSpeed = BASE_MAX_SPEED;
+let cruiseSpeed = maxSpeed / 3;
+
 let speed = 0;
 let playerX = 0;
 let position = 0;
 let lastPosition = 0;
 let bgParallaxX = 0;
 let bikeHitTime = 0; // Timestamp of token collision for white flash
+let totalDistance = 0; // Odometer accumulator
 
 const accel = 200;
 const deceleration = 120;
@@ -327,6 +376,18 @@ function drawLineStrip(x1, y1, w1, x2, y2, w2, offset, widthFactor, color) {
   const lw2 = w2 * widthFactor;
   drawPolygon(lx1, y1, lw1, lx2, y2, lw2, color);
 }
+
+// --- Dynamic HUD Refresh ---
+
+function updateHUD() {
+  const scoreEl = document.getElementById('score-display');
+  if (scoreEl) {
+    // 0.05 miles (500 distance units) = 1 meter
+    const displayMeters = Math.floor(totalDistance / 250);
+    scoreEl.innerText = `Tokens: ${score} | Max Speed: ${Math.round(maxSpeed)} | Odometer: ${displayMeters} m`;
+  }
+}
+
 
 // --- Image Lyric Renderer ---
 function drawLyrics(currentTime, horizonY) {
@@ -401,22 +462,59 @@ function checkTokenCollisions() {
     if (seg && seg.token && !seg.token.isBroken) {
       const xDistance = Math.abs(playerX - seg.token.laneX);
 
-      // 0.35 threshold matches TOKEN_SIZE = 800
-      if (xDistance < 0.20) {
+      // 0.15 threshold matches lane tolerance
+      if (xDistance < 0.15) {
         seg.token.isBroken = true;
         seg.token.breakTime = performance.now();
         
-        bikeHitTime = performance.now(); // Trigger 2-second bike white flash
+        bikeHitTime = performance.now(); // Trigger bike white flash
 
         score += 1;
-        const scoreEl = document.getElementById('score-display');
-        if (scoreEl) scoreEl.innerText = `Tokens Collected: ${score}`;
+        
+        // Dynamic Incremental Max Speed
+        maxSpeed = BASE_MAX_SPEED + (score * SPEED_BOOST_PER_TOKEN);
+        cruiseSpeed = maxSpeed / 3;
+
+        updateHUD();
         break;
       }
     }
   }
 
   lastPosition = position;
+}
+
+// --- Pseudo-3D Roadside Objects Renderer (Cacti, Props) ---
+function drawSideObjects(baseSegmentIndex, maxDrawIndex) {
+  for (let n = maxDrawIndex - 1; n >= baseSegmentIndex; n--) {
+    const segment = segments[n];
+    if (!segment || !segment.sprites || segment.sprites.length === 0) continue;
+    if (segment.p1.world.z <= CAMERA_DEPTH) continue;
+
+    const p1 = segment.p1.screen;
+    if (!p1 || typeof p1.x !== 'number' || isNaN(p1.x) || p1.y <= HORIZON) continue;
+
+    const scale = p1.scale;
+    if (!scale || scale <= 0) continue;
+
+    for (let sprite of segment.sprites) {
+      if (!sprite.img || !sprite.img.complete || sprite.img.naturalWidth === 0) continue;
+
+      const spriteX = p1.x + (scale * sprite.offset * ROAD_WIDTH * CANVAS_HEIGHT);
+      const spriteY = p1.y;
+
+      const aspect = sprite.img.naturalWidth / sprite.img.naturalHeight;
+      const destH = sprite.baseScale * scale * CANVAS_HEIGHT;
+      const destW = destH * aspect;
+
+      const drawX = spriteX - (destW / 2);
+      const drawY = spriteY - destH; // Bottom anchors cleanly to terrain
+
+      if (isNaN(drawX) || isNaN(drawY) || destW <= 0 || destH <= 0) continue;
+
+      ctx.drawImage(sprite.img, drawX, drawY, destW, destH);
+    }
+  }
 }
 
 // --- Pseudo-3D Token Renderer ---
@@ -545,9 +643,12 @@ function update(dt) {
 
   playerX = Math.max(-1.8, Math.min(1.8, playerX));
 
+  // Advance Position and Accumulate Odometer Distance
   position += speed * dt;
+  totalDistance += speed * dt;
 
   checkTokenCollisions();
+  updateHUD();
 
   const playerSegmentIndex = Math.floor(position / SEGMENT_LENGTH);
   while (segments.length - playerSegmentIndex < DRAW_DISTANCE + 200) {
@@ -610,6 +711,9 @@ function render() {
     }
   }
 
+  // Draw Roadside Cacti & Props
+  drawSideObjects(baseSegmentIndex, maxDrawIndex);
+
   // Draw Tokens safely
   drawTokens(baseSegmentIndex, maxDrawIndex);
 
@@ -637,7 +741,7 @@ function render() {
     // 1. Draw base bike sprite
     ctx.drawImage(activeSprite, renderX, renderY, BIKE_WIDTH, BIKE_HEIGHT);
 
-    // 2. Overlay 2-second white flash on collision
+    // 2. Overlay white flash on token collision
     const hitElapsed = performance.now() - bikeHitTime;
     const flashDuration = 500;
 
