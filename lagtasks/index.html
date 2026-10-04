@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Game Task Board</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
 :root{--bg:#f4f1ea;--col:#e8e3d8;--ink:#2b2b2b;--mut:#777}
 @media (prefers-color-scheme:dark){:root{--bg:#1d1d1f;--col:#2a2a2d;--ink:#eee;--mut:#999}}
@@ -20,12 +21,12 @@ button{font:inherit;cursor:pointer}
 .col{background:var(--col);border-radius:12px;padding:10px;min-height:120px}
 .col h2{margin:2px 4px 10px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);display:flex;justify-content:space-between}
 .col.over{outline:2px dashed #2f6fed}
-.note{background:#ffe76a;color:#2b2b2b;border-radius:4px;padding:10px 10px 6px;margin-bottom:10px;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:grab;transform:rotate(-.5deg)}
-.note:nth-child(even){transform:rotate(.6deg)}
-.note.c1{background:#ffe76a}.note.c2{background:#ffb3c7}.note.c3{background:#a8e6a1}.note.c4{background:#a9d4ff}.note.c5{background:#ffcf8a}
+.note{background:#ffe76a;color:#2b2b2b;border-radius:4px;padding:10px 10px 6px;margin-bottom:10px;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:grab}
+.note.c1{background:#ffe76a}.note.c2{background:#ff9ebb}
 .txt{white-space:pre-wrap;word-break:break-word;font-size:15px;outline:none;min-height:20px}
 .bar{display:flex;gap:4px;margin-top:6px;justify-content:space-between}
-.bar button{border:0;background:rgba(0,0,0,.1);border-radius:6px;padding:4px 10px;color:#222}
+.bar button{border:0;background:rgba(0,0,0,.1);border-radius:6px;padding:5px 11px;color:#222;font-size:15px}
+.bar .mid{display:flex;gap:4px}
 #status{font-size:12px;color:var(--mut);padding:0 16px}
 </style>
 </head>
@@ -73,7 +74,7 @@ function remove(t){tasks=tasks.filter(x=>x.id!==t.id);cache();render();post("del
 
 function addTask(){
   const v=$("#inp").value.trim();if(!v)return;
-  const t={id:"t"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:v,status:"todo",color:1+Math.floor(Math.random()*5),created:Date.now()};
+  const t={id:"t"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:v,status:"todo",color:1,created:Date.now()};
   tasks.push(t);cache();render();post("set",t);$("#inp").value="";
 }
 $("#addBtn").onclick=addTask;
@@ -89,18 +90,23 @@ function render(){
     col.ondragleave=()=>col.classList.remove("over");
     col.ondrop=e=>{e.preventDefault();col.classList.remove("over");const t=tasks.find(x=>x.id===dragId);if(t&&t.status!==key)upd(t,{status:key})};
     items.forEach(t=>{
-      const n=document.createElement("div");n.className="note c"+(t.color||1);n.draggable=true;
+      const n=document.createElement("div");n.className="note c"+(t.color===2?2:1);n.draggable=true;
       n.ondragstart=()=>{dragId=t.id};
       const tx=document.createElement("div");tx.className="txt";tx.textContent=t.text;tx.contentEditable="true";
       tx.onblur=()=>{const v=tx.textContent.trim();if(v&&v!==t.text)upd(t,{text:v});else if(!v)tx.textContent=t.text};
       const bar=document.createElement("div");bar.className="bar";
-      const l=document.createElement("button");l.textContent="◀";l.disabled=ci===0;l.style.opacity=ci===0?.3:1;
+      const ico=(c)=>`<i class="${c}"></i>`;
+      const l=document.createElement("button");l.innerHTML=ico("fa-solid fa-chevron-left");l.title="Move back";l.disabled=ci===0;l.style.opacity=ci===0?.3:1;
       l.onclick=()=>upd(t,{status:COLS[ci-1][0]});
-      const d=document.createElement("button");d.textContent="🗑";
+      const pr=document.createElement("button");const isP=t.color===2;
+      pr.innerHTML=ico((isP?"fa-solid":"fa-regular")+" fa-star");pr.title=isP?"Remove priority":"Mark as priority";
+      pr.onclick=()=>upd(t,{color:isP?1:2});
+      const d=document.createElement("button");d.innerHTML=ico("fa-solid fa-trash");d.title="Delete";
       d.onclick=()=>{if(confirm("Delete this note?"))remove(t)};
-      const r=document.createElement("button");r.textContent="▶";r.disabled=ci===2;r.style.opacity=ci===2?.3:1;
+      const mid=document.createElement("span");mid.className="mid";mid.append(pr,d);
+      const r=document.createElement("button");r.innerHTML=ico("fa-solid fa-chevron-right");r.title="Move forward";r.disabled=ci===2;r.style.opacity=ci===2?.3:1;
       r.onclick=()=>upd(t,{status:COLS[ci+1][0]});
-      bar.append(l,d,r);n.append(tx,bar);col.append(n);
+      bar.append(l,mid,r);n.append(tx,bar);col.append(n);
     });
     b.append(col);
   });
